@@ -6,44 +6,75 @@ from scipy import ndimage
 from scipy.spatial.distance import cdist
 
 def array_to_glyph(array, glyph, width=650):
-    # Improved conversion that creates proper outlines
     threshold = 0.5
     points = []
     
-    # Find connected components in the array
+    # Find contours using better connected components analysis
     labeled_array, num_features = ndimage.label(array > threshold)
     
     for feature in range(1, num_features + 1):
-        feature_points = np.where(labeled_array == feature)
-        contour_points = []
+        feature_mask = labeled_array == feature
+        # Get boundary points using binary erosion
+        boundary = feature_mask & ~ndimage.binary_erosion(feature_mask)
+        boundary_points = np.where(boundary)
         
-        # Convert to font coordinates
-        for y, x in zip(feature_points[0], feature_points[1]):
-            scaled_x = x * (width / 64)
-            scaled_y = y * (700 / 64)  # Assuming 700 units height
+        contour_points = []
+        # Convert to font coordinates with proper scaling and round to integers
+        for y, x in zip(boundary_points[0], boundary_points[1]):
+            scaled_x = round(x * (width / 64))  # Round to nearest integer
+            scaled_y = round((64 - y) * (700 / 64))  # Round to nearest integer
             contour_points.append((scaled_x, scaled_y))
         
         if contour_points:
-            # Simplify points to create smoother outlines
-            simplified_points = simplify_points(contour_points)
+            # Order points to form a continuous contour
+            ordered_points = order_contour_points(contour_points)
+            # Simplify with higher tolerance for smoother curves
+            simplified_points = simplify_points(ordered_points, tolerance=10)
             points.append(simplified_points)
     
-    # Create contours with proper point types
+    # Create contours with proper Bézier curves
     if points:
         pen = glyph.getPen()
         for contour in points:
-            pen.moveTo(contour[0])
-            # Create smooth curves between points
-            for i in range(1, len(contour)):
-                if i % 3 == 1:  # Add control points for curves
-                    pen.curveTo(contour[i], 
-                              contour[min(i+1, len(contour)-1)],
-                              contour[min(i+2, len(contour)-1)])
-                elif i % 3 == 0:
-                    continue  # Skip points used as control points
+            if len(contour) < 3:
+                continue
+                
+            pen.moveTo((int(contour[0][0]), int(contour[0][1])))  # Convert to integers
+            # Use curve fitting to create smooth Bézier curves
+            i = 1
+            while i < len(contour):
+                if i + 2 < len(contour):
+                    # Create smooth curve through three points
+                    p1 = contour[i]
+                    p2 = contour[i + 1]
+                    p3 = contour[i + 2]
+                    # Calculate control points for smooth curve and round to integers
+                    c1 = (round((2*p1[0] + p2[0])/3), round((2*p1[1] + p2[1])/3))
+                    c2 = (round((p1[0] + 2*p2[0])/3), round((p1[1] + 2*p2[1])/3))
+                    pen.curveTo(c1, c2, (int(p2[0]), int(p2[1])))
+                    i += 2
                 else:
-                    pen.lineTo(contour[i])
+                    # Use line for remaining points
+                    pen.lineTo((int(contour[i][0]), int(contour[i][1])))
+                    i += 1
             pen.closePath()
+
+def order_contour_points(points):
+    """Order points to form a continuous contour"""
+    if not points:
+        return points
+        
+    ordered = [points[0]]
+    remaining = points[1:]
+    
+    while remaining:
+        current = ordered[-1]
+        # Find nearest point
+        distances = [((p[0]-current[0])**2 + (p[1]-current[1])**2) for p in remaining]
+        nearest_idx = distances.index(min(distances))
+        ordered.append(remaining.pop(nearest_idx))
+    
+    return ordered
 
 def simplify_points(points, tolerance=5):
     # Implement Douglas-Peucker algorithm to simplify contours
@@ -95,23 +126,34 @@ def expand_font(input_ufo_path, output_ufo_path, model_path):
     with torch.no_grad():
         for glyph_name in new_glyphs:
             if glyph_name not in output_font:
-                # Create new glyph with proper metadata
                 new_glyph = output_font.newGlyph(glyph_name)
                 
-                # Set unicode value
                 if glyph_name in unicode_map:
                     new_glyph.unicode = unicode_map[glyph_name]
                 
-                # Set width (you might want to adjust this based on the glyph)
-                new_glyph.width = 650  # Default width, adjust as needed
+                new_glyph.width = 650
                 
-                # Generate and convert the glyph outline
+                # Create a meaningful input tensor based on unicode/name
+                # We'll encode some information about the glyph type
                 glyph_array = np.zeros((64, 64))
+                if glyph_name in input_font:
+                    # If the glyph exists in input font, use it as reference
+                    reference_glyph = input_font[glyph_name]
+                    glyph_array = UFODataset.glyph_to_array(reference_glyph)
+                else:
+                    # Add some basic shape hints based on the glyph name
+                    if 'grave' in glyph_name.lower():
+                        # Add a diagonal line hint for grave accent
+                        for i in range(20):
+                            glyph_array[i+30, i+20] = 1
+                    elif 'minus' in glyph_name.lower():
+                        # Add a horizontal line hint
+                        glyph_array[32, 10:54] = 1
+                
                 tensor = torch.FloatTensor(glyph_array).unsqueeze(0).unsqueeze(0).to(device)
                 generated = model(tensor)
                 generated_array = generated.squeeze().cpu().numpy()
                 
-                # Convert array to proper outline with curves
                 array_to_glyph(generated_array, new_glyph, width=new_glyph.width)
 
     # Save the expanded font
