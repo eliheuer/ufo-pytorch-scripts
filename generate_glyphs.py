@@ -138,28 +138,45 @@ def expand_font(input_ufo_path, output_ufo_path, model_path):
                 
                 new_glyph.width = 650
                 
-                # Create a meaningful input tensor based on unicode/name
-                # We'll encode some information about the glyph type
+                # Create input tensor - THIS SECTION NEEDS IMPROVEMENT
                 glyph_array = np.zeros((64, 64))
                 if glyph_name in input_font:
                     # If the glyph exists in input font, use it as reference
                     reference_glyph = input_font[glyph_name]
                     glyph_array = UFODataset.glyph_to_array(reference_glyph)
                 else:
-                    # Add some basic shape hints based on the glyph name
+                    # Add more comprehensive shape hints based on glyph type
                     if 'grave' in glyph_name.lower():
-                        # Add a diagonal line hint for grave accent
+                        # Add a more substantial grave accent hint
                         for i in range(20):
-                            glyph_array[i+30, i+20] = 1
+                            glyph_array[i+20:i+25, i+20:i+25] = 1
                     elif 'minus' in glyph_name.lower():
                         # Add a horizontal line hint
-                        glyph_array[32, 10:54] = 1
+                        glyph_array[30:34, 10:54] = 1  # Make line thicker
+                    elif 'ain' in glyph_name.lower():
+                        # Add circular hint for ain
+                        center = (32, 32)
+                        radius = 15
+                        y, x = np.ogrid[-32:32, -32:32]
+                        mask = x*x + y*y <= radius*radius
+                        glyph_array[mask] = 1
+                    elif 'mem' in glyph_name.lower():
+                        # Add basic shape for Hebrew mem
+                        glyph_array[20:44, 20:44] = 1
+                    elif 'ae' in glyph_name.lower():
+                        # Add basic shape for ae ligature
+                        glyph_array[20:44, 15:30] = 1  # Left part
+                        glyph_array[20:44, 35:50] = 1  # Right part
                 
                 tensor = torch.FloatTensor(glyph_array).unsqueeze(0).unsqueeze(0).to(device)
                 generated = model(tensor)
                 generated_array = generated.squeeze().cpu().numpy()
                 
-                array_to_glyph(generated_array, new_glyph, width=new_glyph.width)
+                # Add threshold check to ensure we have meaningful data
+                if np.max(generated_array) > 0.1:  # Adjust threshold as needed
+                    array_to_glyph(generated_array, new_glyph, width=new_glyph.width)
+                else:
+                    print(f"Warning: No meaningful outline generated for {glyph_name}")
 
     # Save the expanded font
     output_font.save(output_ufo_path)
