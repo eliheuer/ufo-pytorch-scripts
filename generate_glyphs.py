@@ -34,7 +34,7 @@ def array_to_glyph(array, glyph, width=650):
             # Order points to form a continuous contour
             ordered_points = order_contour_points(contour_points)
             # Simplify with higher tolerance for smoother curves
-            simplified_points = simplify_points(ordered_points, tolerance=10)
+            simplified_points = simplify_points(ordered_points, tolerance=32)
             points.append(simplified_points)
     
     # Create contours with proper Bézier curves
@@ -81,7 +81,7 @@ def order_contour_points(points):
     
     return ordered
 
-def simplify_points(points, tolerance=5):
+def simplify_points(points, tolerance=32):
     # Implement Douglas-Peucker algorithm to simplify contours
     if len(points) < 3:
         return points
