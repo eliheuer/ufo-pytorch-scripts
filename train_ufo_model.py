@@ -51,24 +51,27 @@ class UFODataset(Dataset):
             if ymax == ymin:
                 ymax = ymin + 1
             
-            # Draw lines between points for each contour
+            # Draw filled contours instead of just lines
             for contour in glyph:
                 points = [(point.x, point.y) for point in contour]
-                # Add first point to close the contour
-                points.append(points[0])
+                # Convert points to numpy array format
+                points_array = np.array(points)
+                # Scale points to fit in our 64x64 grid
+                scaled_x = ((points_array[:, 0] - xmin) * 63 / (xmax - xmin)).astype(int)
+                scaled_y = ((points_array[:, 1] - ymin) * 63 / (ymax - ymin)).astype(int)
                 
+                # Create polygon mask
+                polygon = list(zip(scaled_y, scaled_x))
+                from skimage.draw import polygon as draw_polygon
+                rr, cc = draw_polygon(scaled_y, scaled_x)
+                valid_mask = (rr >= 0) & (rr < 64) & (cc >= 0) & (cc < 64)
+                image[rr[valid_mask], cc[valid_mask]] = 1
+                
+                # Draw edges to ensure thin features are captured
                 for i in range(len(points) - 1):
-                    x1, y1 = points[i]
-                    x2, y2 = points[i + 1]
-                    
-                    # Normalize and scale coordinates
-                    x1_norm = int((x1 - xmin) * 63 / (xmax - xmin))
-                    y1_norm = int((y1 - ymin) * 63 / (ymax - ymin))
-                    x2_norm = int((x2 - xmin) * 63 / (xmax - xmin))
-                    y2_norm = int((y2 - ymin) * 63 / (ymax - ymin))
-                    
-                    # Draw line between points using Bresenham's algorithm
-                    for x, y in self._bresenham_line(x1_norm, y1_norm, x2_norm, y2_norm):
+                    x1, y1 = scaled_x[i], scaled_y[i]
+                    x2, y2 = scaled_x[i + 1], scaled_y[i + 1]
+                    for x, y in self._bresenham_line(x1, y1, x2, y2):
                         if 0 <= x < 64 and 0 <= y < 64:
                             image[y, x] = 1
         
@@ -120,24 +123,35 @@ class UFODataset(Dataset):
 class GlyphGenerator(nn.Module):
     def __init__(self):
         super(GlyphGenerator, self).__init__()
+        # Increase network capacity
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1),
+            nn.Conv2d(1, 64, 3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1),
+            nn.Conv2d(64, 64, 3, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2),
             nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2)
         )
         
         self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.ReLU(),
             nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),
+            nn.Conv2d(64, 64, 3, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 1, 4, stride=2, padding=1),
+            nn.ConvTranspose2d(64, 1, 4, stride=2, padding=1),
             nn.Sigmoid()
         )
 
@@ -161,12 +175,16 @@ def train_model():
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # Training loop
-    num_epochs = 100
+    num_epochs = 500  # Increase epochs
+    best_loss = float('inf')
+    patience = 20
+    patience_counter = 0
+    
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
         for batch in dataloader:
-            inputs = batch['tensor'].to(device)  # Remove .unsqueeze(1) since it's done in __getitem__
+            inputs = batch['tensor'].to(device)
             
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -178,9 +196,19 @@ def train_model():
         
         avg_loss = total_loss / len(dataloader)
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
-
-    # Save the model
-    torch.save(model.state_dict(), "glyph_generator.pth")
+        
+        # Save best model
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(model.state_dict(), "glyph_generator_best.pth")
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            
+        # Early stopping
+        if patience_counter >= patience:
+            print("Early stopping triggered")
+            break
 
 if __name__ == "__main__":
     train_model()

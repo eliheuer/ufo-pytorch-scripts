@@ -19,10 +19,15 @@ def array_to_glyph(array, glyph, width=650):
         boundary_points = np.where(boundary)
         
         contour_points = []
-        # Convert to font coordinates with proper scaling and round to integers
+        # Convert to font coordinates with proper scaling
         for y, x in zip(boundary_points[0], boundary_points[1]):
-            scaled_x = round(x * (width / 64))  # Round to nearest integer
-            scaled_y = round((64 - y) * (700 / 64))  # Round to nearest integer
+            # Scale x from 0-64 to 0-width
+            scaled_x = round(x * (width / 64))
+            # Scale y from 0-64 to 0-700, and flip coordinate system
+            scaled_y = round((64 - y) * (700 / 64))
+            # Add some variation to y-coordinates based on x position
+            y_offset = int(20 * np.sin(x * np.pi / 32))  # Creates natural-looking variation
+            scaled_y += y_offset
             contour_points.append((scaled_x, scaled_y))
         
         if contour_points:
