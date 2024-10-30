@@ -4,7 +4,8 @@ This project consists of a collection of Python scripts train neural networks on
 
 These scripts are very alpha quality and are created by a font engineer, not an experianced machine learning engineer. All training data used for this project is licensed under the SIL Open Font License.
 
-<img src="documentation/flux-images/lil-ufo-001.jpeg" alt="Lil UFO" width="300"/>
+<img src="documentation/flux-images/lil-ufo-001.jpeg" alt="Lil UFO"/>
+<img src="documentation/flux-images/2024-10-28-174755_3840x2160_scrot.png" alt="Linux screenshot"/>
 
 ## Overview
 
