@@ -1,9 +1,11 @@
 import torch
+import argparse
 from train_ufo_model import GlyphGenerator
 from defcon import Font
 import numpy as np
 from scipy import ndimage
 from scipy.spatial.distance import cdist
+import os
 
 def array_to_glyph(array, glyph, width=650):
     threshold = 0.5
@@ -96,7 +98,12 @@ def simplify_points(points, tolerance=32):
     else:
         return [points[0], points[-1]]
 
-def expand_font(input_ufo_path, output_ufo_path, model_path):
+def expand_font(input_ufo_path, output_ufo_path, model_dir):
+    # Construct model path
+    model_path = os.path.join(model_dir, "glyph_generator.pth")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found at {model_path}")
+    
     # Load the trained model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GlyphGenerator().to(device)
@@ -182,4 +189,13 @@ def expand_font(input_ufo_path, output_ufo_path, model_path):
     output_font.save(output_ufo_path)
 
 if __name__ == "__main__":
-    expand_font("input.ufo", "output.ufo", "glyph_generator.pth")
+    parser = argparse.ArgumentParser(description='Generate glyphs using trained model')
+    parser.add_argument('--input', type=str, required=True,
+                      help='Input UFO file path')
+    parser.add_argument('--output', type=str, required=True,
+                      help='Output UFO file path')
+    parser.add_argument('--model', type=str, required=True,
+                      help='Model directory (e.g., model-a)')
+    args = parser.parse_args()
+    
+    expand_font(args.input, args.output, args.model)

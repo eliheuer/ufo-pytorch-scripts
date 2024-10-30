@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import os
+import argparse
 from defcon import Font
 import numpy as np
 from pathlib import Path
@@ -160,13 +161,18 @@ class GlyphGenerator(nn.Module):
         x = self.decoder(x)
         return x
 
-def train_model():
+def train_model(dataset_dir):
+    # Create model directory name from dataset name
+    model_dir = f"model-{dataset_dir.split('-')[-1]}"
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, "glyph_generator.pth")
+    
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     # Initialize dataset and dataloader
-    dataset = UFODataset(".")
+    dataset = UFODataset(dataset_dir)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
     # Initialize model
@@ -175,7 +181,7 @@ def train_model():
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # Training loop
-    num_epochs = 500  # Increase epochs
+    num_epochs = 500
     best_loss = float('inf')
     patience = 20
     patience_counter = 0
@@ -200,7 +206,7 @@ def train_model():
         # Save best model
         if avg_loss < best_loss:
             best_loss = avg_loss
-            torch.save(model.state_dict(), "glyph_generator_best.pth")
+            torch.save(model.state_dict(), model_path)
             patience_counter = 0
         else:
             patience_counter += 1
@@ -211,4 +217,9 @@ def train_model():
             break
 
 if __name__ == "__main__":
-    train_model()
+    parser = argparse.ArgumentParser(description='Train glyph generator model')
+    parser.add_argument('--dataset', type=str, required=True,
+                      help='Dataset directory (e.g., dataset-a)')
+    args = parser.parse_args()
+    
+    train_model(args.dataset)
