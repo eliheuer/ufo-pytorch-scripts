@@ -1,6 +1,6 @@
 # UFO PyTorch Scripts
 
-This project consists of a collection of Python scripts train neural networks on UFO font source files, and aditional scripts that use there models to automate labor intensive tasks in type design workflows.
+This project consists of a collection of Python scripts used to train neural networks on UFO font source files, and aditional scripts that use the generated models to automate labor intensive tasks in type design workflows.
 
 These scripts are very alpha quality and are created by a font engineer, not an experianced machine learning engineer. All training data used for this project is licensed under the SIL Open Font License.
 
